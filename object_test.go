@@ -3,6 +3,7 @@ package quickjs
 import (
 	"math"
 	"reflect"
+	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -10,13 +11,24 @@ import (
 
 func TestPlainObject(t *testing.T) {
 	NewRuntime().NewContext().With(func(context *Context) {
+		retval, err := context.Eval("new Object([1, 2])")
+		assert.NoError(t, err)
+		expected := []any{1, 2}
+		assert.Equal(t, expected, retval.ToNative())
+
+		context.GlobalObject().SetProperty("plain", expected)
+		retval, err = context.GlobalObject().GetProperty("plain")
+		assert.NoError(t, err)
+		assert.Equal(t, expected, retval.ToNative())
+	})
+	NewRuntime().NewContext().With(func(context *Context) {
 		retval, err := context.Eval("new Object({a: 1, b: {c: 2}})")
 		assert.NoError(t, err)
 		expected := map[string]any{"a": 1, "b": map[string]any{"c": 2}}
 		assert.Equal(t, expected, retval.ToNative())
 
-		context.GlobalObject().SetProperty("plain", expected)
-		retval, err = context.GlobalObject().GetProperty("plain")
+		context.GlobalObject().SetProperty("plain2", expected)
+		retval, err = context.GlobalObject().GetProperty("plain2")
 		assert.NoError(t, err)
 		assert.Equal(t, expected, retval.ToNative())
 	})
@@ -94,7 +106,7 @@ func TestSetFunction(t *testing.T) {
 	})
 }
 
-func BenchmarkKind(b *testing.B) {
+func BenchmarkGetKind(b *testing.B) {
 	NewRuntime().NewContext().With(func(context *Context) {
 		retval, err := context.Eval("new Date()")
 		assert.NoError(b, err)
@@ -103,5 +115,20 @@ func BenchmarkKind(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			_ = retval.Object().Kind()
 		}
+	})
+}
+
+func BenchmarkObjectFromNative(b *testing.B) {
+	NewRuntime().NewContext().With(func(context *Context) {
+		expected := make(map[string]any)
+		for i := 0; i < 16; i++ {
+			expected[strconv.Itoa(i)] = i
+		}
+		global := context.GlobalObject()
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			global.SetProperty("whatever", expected)
+		}
+		b.StopTimer()
 	})
 }

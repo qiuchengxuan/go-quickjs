@@ -2,13 +2,24 @@ package quickjs
 
 //#include "ffi.h"
 import "C"
-import "unsafe"
+import (
+	"math"
+	"unsafe"
+)
 
 type ObjectKind uint8
 
+var builtinKinds = [13]string{
+	"Object", "ArrayBuffer",
+	"Int8Array", "Int16Array", "Int32Array",
+	"Uint8Array", "Uint16Array", "Uint32Array",
+	"Float32Array", "Float64Array",
+	"Map", "Set", "Date",
+}
+
 const (
-	KindPlainObject ObjectKind = iota
-	KindArray
+	KindArray ObjectKind = iota
+	KindPlainObject
 	KindArrayBuffer
 	KindInt8Array
 	KindInt16Array
@@ -21,7 +32,7 @@ const (
 	KindMap
 	KindSet
 	KindDate
-	KindUnknown
+	KindUnknown = math.MaxUint8
 )
 
 type Object struct{ Value }
@@ -31,37 +42,10 @@ func (o Object) Kind() ObjectKind {
 		return KindArray
 	}
 	property, _ := o.GetProperty("constructor")
-	name, _ := property.Object().GetProperty("name")
-	switch name.String() {
-	case "Object":
-		return KindPlainObject
-	case "ArrayBuffer":
-		return KindArrayBuffer
-	case "Int8Array":
-		return KindInt8Array
-	case "Int16Array":
-		return KindInt16Array
-	case "Int32Array":
-		return KindInt32Array
-	case "Uint8Array":
-		return KindUint8Array
-	case "Uint16Array":
-		return KindUint16Array
-	case "Uint32Array":
-		return KindUint32Array
-	case "Float32Array":
-		return KindFloat32Array
-	case "Float64Array":
-		return KindFloat64Array
-	case "Map":
-		return KindMap
-	case "Set":
-		return KindSet
-	case "Date":
-		return KindDate
-	default:
-		return KindUnknown
+	if kind, ok := o.context.objectKinds[property.raw]; ok {
+		return kind
 	}
+	return KindUnknown
 }
 
 const (
@@ -71,6 +55,13 @@ const (
 	flagEnumOnly
 	flagSetEnum
 )
+
+func (o Object) HasProperty(name string) bool {
+	atom := C.JS_NewAtom(o.context.raw, strPtr(name+"\x00"))
+	retval := C.JS_HasProperty(o.context.raw, o.raw, atom) == 1
+	C.JS_FreeAtom(o.context.raw, atom)
+	return retval
+}
 
 func (o Object) GetOwnPropertyNames() []string {
 	var enumPtr *C.JSPropertyEnum
@@ -91,16 +82,29 @@ func (o Object) GetOwnPropertyNames() []string {
 	return properties
 }
 
+func (o Object) plainObjectToNative() any {
+	jsValue, _ := o.GetProperty("length")
+	if length, ok := jsValue.ToPrimitive().(int); ok {
+		retval := make([]any, length)
+		for i := 0; i < length; i++ {
+			jsValue := Value{o.context, o.getPropertyByIndex(uint32(i))}
+			retval[i] = jsValue.ToNative()
+		}
+		return retval
+	}
+	names := o.GetOwnPropertyNames()
+	retval := make(map[string]any, len(names))
+	for _, name := range names {
+		property, _ := o.GetProperty(name)
+		retval[name] = property.ToNative()
+	}
+	return retval
+}
+
 func (o Object) ToNative() any {
 	switch o.Kind() {
 	case KindPlainObject:
-		names := o.GetOwnPropertyNames()
-		retval := make(map[string]any, len(names))
-		for _, name := range names {
-			property, _ := o.GetProperty(name)
-			retval[name] = property.ToNative()
-		}
-		return retval
+		return o.plainObjectToNative()
 	case KindArray:
 		return o.Array().ToNative()
 	case KindArrayBuffer:
@@ -132,8 +136,8 @@ func (o Object) ToNative() any {
 	}
 }
 
-func (o Object) call(numArgs int, argsPtr *C.JSValue) C.JSValue {
-	return C.JS_Call(o.context.raw, o.raw, C.JS_Null(), C.int(numArgs), argsPtr)
+func (o Object) call(this C.JSValue, numArgs int, argsPtr *C.JSValue) C.JSValue {
+	return C.JS_Call(o.context.raw, o.raw, this, C.int(numArgs), argsPtr)
 }
 
 func (o Object) getProperty(name string) C.JSValue {
@@ -154,8 +158,28 @@ func (o Object) setProperty(name string, value C.JSValue) {
 }
 
 // []byte will be converted to Uint8Array since []byte and []uint8 is the same
+// []any and map[string]any will be converted to plain object
+// Any form of map will be converted to Map
 func (o Object) SetProperty(name string, value any) {
 	o.setProperty(name, o.context.toJsValue(value))
+}
+
+func (o Object) getPropertyByIndex(index uint32) C.JSValue {
+	return C.JS_GetPropertyUint32(o.context.raw, o.raw, C.uint32_t(index))
+}
+
+func (o Object) GetPropertyByIndex(index uint32) Value {
+	jsValue := o.getPropertyByIndex(index)
+	C.JS_FreeValue(o.context.raw, jsValue)
+	return Value{o.context, jsValue}
+}
+
+func (o Object) setPropertyByIndex(index uint32, value C.JSValue) {
+	C.JS_SetPropertyUint32(o.context.raw, o.raw, C.uint32_t(index), value)
+}
+
+func (o Object) SetPropertyByIndex(index uint32, value any) {
+	o.setPropertyByIndex(index, o.context.toJsValue(value))
 }
 
 // Assume value is Object

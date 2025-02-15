@@ -91,7 +91,9 @@ func (v Value) ToPrimitive() any {
 }
 
 // Be aware that number could be int or double,
-// BigInt could be int or big.Int
+// BigInt could be int or big.Int,
+// Plain object will be converted to map[string]any or []any
+// Map will be converted to map[any]any
 func (v Value) ToNative() any {
 	switch v.Type() {
 	case TypeNull, TypeUndefined:

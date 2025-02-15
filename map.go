@@ -10,19 +10,19 @@ func (m Map) Size() int {
 	return property.ToPrimitive().(int)
 }
 
-func (m Map) ToNative() map[string]any {
+func (m Map) ToNative() map[any]any {
 	arrayFn, _ := m.context.GlobalObject().GetProperty("Array")
 	from, _ := arrayFn.Object().GetProperty("from")
-	callValue := m.context.assert(from.Object().call(1, &m.raw))
+	callValue := m.context.assert(from.Object().call(null, 1, &m.raw))
 	array := Value{m.context, callValue}.Object().Array()
 	length := array.Len()
 	if length == 0 {
 		return nil
 	}
-	retval := make(map[string]any, length)
+	retval := make(map[any]any, length)
 	for i := 0; i < length; i++ {
 		entry := array.Get(i).Object().Array()
-		key := entry.Get(0).String()
+		key := entry.Get(0).ToNative()
 		retval[key] = entry.Get(1).ToNative()
 	}
 	C.JS_FreeValue(m.context.raw, callValue)

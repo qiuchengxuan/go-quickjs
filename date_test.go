@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestDate(t *testing.T) {
+func TestDateToNative(t *testing.T) {
 	NewRuntime().NewContext().With(func(context *Context) {
 		value, err := context.Eval("new Date(8.64e15)")
 		assert.NoError(t, err)

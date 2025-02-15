@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestSet(t *testing.T) {
+func TestSetToNative(t *testing.T) {
 	NewRuntime().NewContext().With(func(context *Context) {
 		value, err := context.Eval(`new Set([1, 2, 1])`)
 		assert.NoError(t, err)

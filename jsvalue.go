@@ -4,7 +4,10 @@ package quickjs
 import "C"
 import (
 	"math"
+	"reflect"
 )
+
+var null = C.JS_Null()
 
 func (c *Context) toJsValue(value any) C.JSValue {
 	switch value := value.(type) {
@@ -63,6 +66,12 @@ func (c *Context) toJsValue(value any) C.JSValue {
 		return newTypedArray(c, value, typedArrayFloat32)
 	case []float64:
 		return newTypedArray(c, value, typedArrayFloat64)
+	case []any:
+		array := Value{c, C.JS_NewArray(c.raw)}.Object().Array()
+		for i, item := range value {
+			array.Set(i, item)
+		}
+		return array.raw
 	case map[string]any:
 		object := Value{c, C.JS_NewObject(c.raw)}.Object()
 		for key, value := range value {
@@ -72,6 +81,22 @@ func (c *Context) toJsValue(value any) C.JSValue {
 	case NaiveFunc:
 		return c.addNaiveFunc(value)
 	default:
-		return C.JS_Null()
+		valueOf := reflect.ValueOf(value)
+		switch valueOf.Kind() {
+		case reflect.Map:
+			class, _ := c.GlobalObject().GetProperty("Map")
+			items := make([]any, 0, valueOf.Len())
+			iter := valueOf.MapRange()
+			for iter.Next() {
+				item := []any{iter.Key().Interface(), iter.Value().Interface()}
+				items = append(items, item)
+			}
+			jsValue := c.toJsValue(items)
+			jsMap := C.JS_CallConstructor(c.raw, class.raw, 1, &jsValue)
+			C.JS_FreeValue(c.raw, jsValue)
+			return jsMap
+		default:
+			return null
+		}
 	}
 }

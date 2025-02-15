@@ -34,17 +34,16 @@ func newTypedArray[T Number](c *Context, slice []T, arrayType int) C.JSValue {
 type Array struct{ Object }
 
 func (a Array) Len() int {
-	property, err := a.GetProperty("length")
-	if err != nil {
-		panic(err)
-	}
+	property, _ := a.GetProperty("length")
 	return property.ToPrimitive().(int)
 }
 
+func (a Array) Set(index int, value any) {
+	a.SetPropertyByIndex(uint32(index), value)
+}
+
 func (a Array) Get(index int) Value {
-	jsValue := C.JS_GetPropertyUint32(a.context.raw, a.raw, C.uint32_t(index))
-	C.JS_FreeValue(a.context.raw, jsValue)
-	return Value{a.context, jsValue}
+	return a.GetPropertyByIndex(uint32(index))
 }
 
 func (a Array) ToNative() []any {

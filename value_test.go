@@ -68,7 +68,7 @@ func TestToNative(t *testing.T) {
 	})
 }
 
-func TestFromPrimitive(t *testing.T) {
+func TestFromNative(t *testing.T) {
 	NewRuntime().NewContext().With(func(context *Context) {
 		context.GlobalObject().SetProperty("testValue", nil)
 		retval, err := context.Eval("testValue == null")

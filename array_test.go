@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestArray(t *testing.T) {
+func TestArrayToNative(t *testing.T) {
 	NewRuntime().NewContext().With(func(context *Context) {
 		value, err := context.Eval("[1, 2]")
 		assert.NoError(t, err)
@@ -14,7 +14,7 @@ func TestArray(t *testing.T) {
 	})
 }
 
-func TestArrayBuffer(t *testing.T) {
+func TestArrayBufferToNative(t *testing.T) {
 	NewRuntime().NewContext().With(func(context *Context) {
 		value, err := context.Eval("Uint8Array.from([1, 2]).buffer")
 		assert.NoError(t, err)
@@ -22,7 +22,7 @@ func TestArrayBuffer(t *testing.T) {
 	})
 }
 
-func TestFromTypedArray(t *testing.T) {
+func TestTypedArrayToNative(t *testing.T) {
 	NewRuntime().NewContext().With(func(context *Context) {
 		value, err := context.Eval("Uint16Array.from([1, 2])")
 		assert.NoError(t, err)
@@ -33,5 +33,37 @@ func TestFromTypedArray(t *testing.T) {
 		value, err = context.Eval("Float64Array.from([1.2, -2.1])")
 		assert.NoError(t, err)
 		assert.Equal(t, []float64{1.2, -2.1}, value.ToNative())
+	})
+}
+
+func BenchmarkArrayToNative(b *testing.B) {
+	NewRuntime().NewContext().With(func(context *Context) {
+		value, err := context.Eval("Array.from(Array(16).keys())")
+		assert.NoError(b, err)
+		expected := make([]any, 16)
+		for i := 0; i < 16; i++ {
+			expected[i] = i
+		}
+		assert.Equal(b, expected, value.ToNative())
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			_ = value.ToNative()
+		}
+		b.StopTimer()
+	})
+}
+
+func BenchmarkArrayFromNative(b *testing.B) {
+	NewRuntime().NewContext().With(func(context *Context) {
+		expected := make([]any, 16)
+		for i := 0; i < 16; i++ {
+			expected[i] = i
+		}
+		global := context.GlobalObject()
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			global.SetProperty("whatever", expected)
+		}
+		b.StopTimer()
 	})
 }

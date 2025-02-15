@@ -13,7 +13,7 @@ func (s Set) Size() int {
 func (s Set) ToNative() []any {
 	arrayFn, _ := s.context.GlobalObject().GetProperty("Array")
 	from, _ := arrayFn.Object().GetProperty("from")
-	callValue := s.context.assert(from.Object().call(1, &s.raw))
+	callValue := s.context.assert(from.Object().call(null, 1, &s.raw))
 	array := Value{s.context, callValue}.Object().Array()
 	length := array.Len()
 	retval := make([]any, length)

@@ -10,15 +10,16 @@ import (
 )
 
 type Context struct {
-	runtime   *Runtime
-	raw       *C.JSContext
-	filename  C.int
-	global    C.JSValue
-	proxy     C.JSValue
-	makeProxy C.JSValue
-	evalRet   C.JSValue
-	goValues  map[any]C.JSValue
-	free      atomic.Bool
+	runtime     *Runtime
+	raw         *C.JSContext
+	filename    C.int
+	global      C.JSValue
+	proxy       C.JSValue
+	makeProxy   C.JSValue
+	evalRet     C.JSValue
+	goValues    map[any]C.JSValue
+	objectKinds map[C.JSValue]ObjectKind
+	free        atomic.Bool
 }
 
 func (c *Context) getException() error {
@@ -51,7 +52,7 @@ func (c *Context) addCallback(callback *callback) C.JSValue {
 	pointer := math.Float64frombits(uint64(uintptr(unsafe.Pointer(callback))))
 	handler := C.JS_NewFloat64(c.raw, C.double(pointer))
 	args := []C.JSValue{c.proxy, handler}
-	return C.JS_Call(c.raw, c.makeProxy, C.JS_Null(), C.int(len(args)), &args[0])
+	return C.JS_Call(c.raw, c.makeProxy, null, C.int(len(args)), &args[0])
 }
 
 func (c *Context) addNaiveFunc(fn NaiveFunc) C.JSValue {
@@ -90,8 +91,7 @@ func (c *Context) Compile(code string) (ByteCode, error) {
 	if int(size) <= 0 {
 		return nil, c.getException()
 	}
-	byteCode := make(ByteCode, int(size))
-	copy(byteCode, C.GoBytes(unsafe.Pointer(pointer), C.int(size)))
+	byteCode := C.GoBytes(unsafe.Pointer(pointer), C.int(size))
 	C.js_free(c.raw, unsafe.Pointer(pointer))
 	return byteCode, nil
 }
@@ -105,7 +105,7 @@ func (c *Context) eval(code string) (C.JSValue, error) {
 	}
 	jsValue := C.JS_Eval(c.raw, codePtr, strlen(code), strPtr(filename), flags)
 	if err := c.checkException(jsValue); err != nil {
-		return C.JS_Null(), err
+		return null, err
 	}
 	return jsValue, nil
 }
@@ -124,13 +124,7 @@ func (c *Context) Eval(code string) (Value, error) {
 func (c *Context) EvalBinary(byteCode ByteCode) (Value, error) {
 	flags := C.int(C.JS_READ_OBJ_BYTECODE)
 	object := C.JS_ReadObject(c.raw, bytesPtr(byteCode), C.size_t(len(byteCode)), flags)
-	if err := c.checkException(object); err != nil {
-		return Value{c, C.JS_Null()}, err
-	}
-	retval := C.JS_EvalFunction(c.raw, object)
-	if err := c.checkException(retval); err != nil {
-		return Value{c, C.JS_Null()}, err
-	}
+	retval := c.assert(C.JS_EvalFunction(c.raw, c.assert(object)))
 	C.JS_FreeValue(c.raw, c.evalRet)
 	c.evalRet = retval
 	return Value{c, retval}, nil
@@ -161,22 +155,23 @@ func (c *Context) Free() {
 	c.runtime.Free()
 }
 
-type contextGuard struct{ context *Context }
+type ContextGuard struct{ context *Context }
 
 // Manipulate Context with os thread locked
-func (g contextGuard) With(fn func(*Context)) {
+func (g ContextGuard) With(fn func(*Context)) {
 	// Reason unknown, without locking os thread will cause quickjs throw strange exception
 	runtime.LockOSThread()
 	fn(g.context)
+	g.context.RunGC()
 	runtime.UnlockOSThread()
 }
 
 // NOTE: unsafe
-func (g contextGuard) Unwrap() *Context { return g.context }
+func (g ContextGuard) Unwrap() *Context { return g.context }
 
-func (g contextGuard) Free() { g.context.Free() }
+func (g ContextGuard) Free() { g.context.Free() }
 
-func (r *Runtime) NewContext() contextGuard {
+func (r *Runtime) NewContext() ContextGuard {
 	r.refCount.Add(1)
 	C.js_std_init_handlers(r.raw)
 
@@ -193,10 +188,16 @@ func (r *Runtime) NewContext() contextGuard {
 		runtime: r, raw: jsContext, global: object, proxy: proxy,
 		goValues: make(map[any]C.JSValue),
 	}
+	objectKinds := make(map[C.JSValue]ObjectKind, KindDate+1)
+	for i, name := range builtinKinds {
+		jsValue, _ := context.GlobalObject().GetProperty(name)
+		objectKinds[jsValue.raw] = ObjectKind(i + 1)
+	}
+	context.objectKinds = objectKinds
 	if !globalConfig.ManualFree {
 		runtime.SetFinalizer(context, func(c *Context) { c.Free() })
 	}
 	makeProxy := "(proxy, handler) => function() { return proxy.call(handler, ...arguments) }"
 	context.makeProxy, _ = context.eval(makeProxy)
-	return contextGuard{context}
+	return ContextGuard{context}
 }
