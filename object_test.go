@@ -90,7 +90,7 @@ func TestSetProperty(t *testing.T) {
 	})
 }
 
-func TestSetFunction(t *testing.T) {
+func TestCallGoFunction(t *testing.T) {
 	NewRuntime().NewContext().With(func(context *Context) {
 		object := context.GlobalObject()
 		counter := 0
@@ -99,10 +99,19 @@ func TestSetFunction(t *testing.T) {
 			return args[0].(int) + args[1].(int)
 		}
 		object.SetProperty("test", naiveFunc)
-		retval, err := context.Eval("test(1, 2)")
+		retval, err := context.Eval("test(1, 2);")
 		assert.NoError(t, err)
 		assert.Equal(t, 2, counter)
 		assert.Equal(t, 3, retval.ToNative())
+	})
+}
+
+func TestFinalizer(t *testing.T) {
+	runtime := NewRuntime()
+	runtime.NewContext().With(func(context *Context) {
+		value := context.addGoInterface(nil, runtime.goFnClassID)
+		Value{context, value}.free()
+		assert.Zero(t, 0, len(context.goValues))
 	})
 }
 
@@ -130,5 +139,21 @@ func BenchmarkObjectFromNative(b *testing.B) {
 			global.SetProperty("whatever", expected)
 		}
 		b.StopTimer()
+	})
+}
+
+func BenchmarkCallGoFunction(b *testing.B) {
+	NewRuntime().NewContext().With(func(context *Context) {
+		naiveFunc := func(args ...any) any {
+			return args[0].(int) + args[1].(int)
+		}
+		global := context.GlobalObject()
+		global.SetProperty("test", naiveFunc)
+		retval, err := context.Eval("test(1, 2)")
+		assert.NoError(b, err)
+		assert.Equal(b, 3, retval.ToNative())
+		for i := 0; i < b.N; i++ {
+			context.Eval("test(1, 2)")
+		}
 	})
 }

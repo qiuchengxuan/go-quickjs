@@ -131,3 +131,7 @@ func (v Value) ToNative() any {
 		return NotNative{}
 	}
 }
+
+func (v Value) free() {
+	C.JS_FreeValue(v.context.raw, v.raw)
+}

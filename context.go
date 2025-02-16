@@ -3,23 +3,20 @@ package quickjs
 //#include "ffi.h"
 import "C"
 import (
-	"math"
 	"runtime"
 	"sync/atomic"
 	"unsafe"
 )
 
 type Context struct {
-	runtime     *Runtime
-	raw         *C.JSContext
-	filename    C.int
-	global      C.JSValue
-	proxy       C.JSValue
-	makeProxy   C.JSValue
-	evalRet     C.JSValue
-	goValues    map[any]C.JSValue
-	objectKinds map[C.JSValue]ObjectKind
-	free        atomic.Bool
+	runtime       *Runtime
+	raw           *C.JSContext
+	global        C.JSValue
+	evalRet       C.JSValue
+	goValues      map[uint32]any
+	nextGoValueID uint32
+	objectKinds   map[C.JSValue]ObjectKind
+	free          atomic.Bool
 }
 
 func (c *Context) getException() error {
@@ -48,11 +45,22 @@ func (c *Context) assert(value C.JSValue) C.JSValue {
 	return value
 }
 
-func (c *Context) addCallback(callback *callback) C.JSValue {
-	pointer := math.Float64frombits(uint64(uintptr(unsafe.Pointer(callback))))
-	handler := C.JS_NewFloat64(c.raw, C.double(pointer))
-	args := []C.JSValue{c.proxy, handler}
-	return C.JS_Call(c.raw, c.makeProxy, null, C.int(len(args)), &args[0])
+func (c *Context) addGoInterface(value any, classID C.JSClassID) C.JSValue {
+	id := c.nextGoValueID
+	for {
+		c.nextGoValueID++
+		if _, ok := c.goValues[id]; !ok {
+			break
+		}
+		id = c.nextGoValueID
+	}
+	c.goValues[id] = value
+	data := interfaceData{value, id, c.goValues}
+	dataPtr := C.malloc(C.size_t(unsafe.Sizeof(data)))
+	*(*interfaceData)(dataPtr) = data
+	jsObject := C.JS_NewObjectClass(c.raw, C.int(classID))
+	C.JS_SetOpaque(jsObject, dataPtr)
+	return jsObject
 }
 
 func (c *Context) addNaiveFunc(fn NaiveFunc) C.JSValue {
@@ -63,11 +71,7 @@ func (c *Context) addNaiveFunc(fn NaiveFunc) C.JSValue {
 		}
 		return c.toJsValue(fn(goArgs...))
 	}
-	callbackPtr := &callback
-	jsValue := c.addCallback(callbackPtr)
-	C.JS_DupValue(c.raw, jsValue)
-	c.goValues[callbackPtr] = jsValue
-	return jsValue
+	return c.addGoInterface(callback, c.runtime.goFnClassID)
 }
 
 func (c *Context) GlobalObject() Object {
@@ -112,8 +116,6 @@ func (c *Context) eval(code string) (C.JSValue, error) {
 
 // Return value must be consumed immediately before next Eval or EvalBinary
 func (c *Context) Eval(code string) (Value, error) {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	C.JS_FreeValue(c.raw, c.evalRet)
 	value, err := c.eval(code)
 	c.evalRet = value
@@ -130,27 +132,13 @@ func (c *Context) EvalBinary(byteCode ByteCode) (Value, error) {
 	return Value{c, retval}, nil
 }
 
-func (c *Context) RunGC() {
-	c.runtime.RunGC()
-	for value, jsValue := range c.goValues {
-		if C.JS_ValueRefCount(c.raw, jsValue) <= 1 {
-			delete(c.goValues, value)
-		}
-	}
-}
-
 // Free context manually
 func (c *Context) Free() {
 	if c.free.Swap(true) {
 		return
 	}
-	for _, jsValue := range c.goValues {
-		C.JS_FreeValue(c.raw, jsValue)
-	}
-	toFree := []C.JSValue{c.global, c.proxy, c.makeProxy, c.evalRet}
-	for _, jsValue := range toFree {
-		C.JS_FreeValue(c.raw, jsValue)
-	}
+	C.JS_FreeValue(c.raw, c.global)
+	C.JS_FreeValue(c.raw, c.evalRet)
 	C.JS_FreeContext(c.raw)
 	c.runtime.Free()
 }
@@ -162,7 +150,6 @@ func (g ContextGuard) With(fn func(*Context)) {
 	// Reason unknown, without locking os thread will cause quickjs throw strange exception
 	runtime.LockOSThread()
 	fn(g.context)
-	g.context.RunGC()
 	runtime.UnlockOSThread()
 }
 
@@ -181,13 +168,11 @@ func (r *Runtime) NewContext() ContextGuard {
 	C.JS_AddIntrinsicOperators(jsContext)
 	C.JS_EnableBignumExt(jsContext, C.int(1))
 
-	fn := (*C.JSCFunction)(unsafe.Pointer(C.proxyCall))
 	object := C.JS_GetGlobalObject(jsContext)
-	proxy := C.JS_NewCFunction(jsContext, fn, nil, C.int(0))
-	context := &Context{
-		runtime: r, raw: jsContext, global: object, proxy: proxy,
-		goValues: make(map[any]C.JSValue),
-	}
+	goValues := make(map[uint32]any)
+	context := &Context{runtime: r, raw: jsContext, global: object, goValues: goValues}
+	proto := C.JS_NewObject(jsContext)
+	C.JS_SetClassProto(jsContext, r.goFnClassID, proto)
 	objectKinds := make(map[C.JSValue]ObjectKind, KindDate+1)
 	for i, name := range builtinKinds {
 		jsValue, _ := context.GlobalObject().GetProperty(name)
@@ -197,7 +182,5 @@ func (r *Runtime) NewContext() ContextGuard {
 	if !globalConfig.ManualFree {
 		runtime.SetFinalizer(context, func(c *Context) { c.Free() })
 	}
-	makeProxy := "(proxy, handler) => function() { return proxy.call(handler, ...arguments) }"
-	context.makeProxy, _ = context.eval(makeProxy)
 	return ContextGuard{context}
 }

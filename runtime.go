@@ -35,8 +35,9 @@ func (e Error) Error() string {
 }
 
 type Runtime struct {
-	raw      *C.JSRuntime
-	refCount atomic.Int32
+	raw         *C.JSRuntime
+	goFnClassID C.JSClassID
+	refCount    atomic.Int32
 }
 
 func (r *Runtime) GetMemoryUsage() MemoryUsage {
@@ -57,16 +58,18 @@ func (r *Runtime) Free() {
 }
 
 func NewRuntime(config ...Config) *Runtime {
-	retval := &Runtime{raw: C.JS_NewRuntime()}
+	jsRuntime := &Runtime{raw: C.JS_NewRuntime()}
 	if len(config) > 0 {
 		config := config[0]
 		if size := config.MaxStackSize; size >= 0 {
-			C.JS_SetMaxStackSize(retval.raw, C.size_t(size))
+			C.JS_SetMaxStackSize(jsRuntime.raw, C.size_t(size))
 		}
 	}
-	retval.refCount.Add(1)
+	C.JS_NewClassID(&jsRuntime.goFnClassID)
+	C.JS_NewClass(jsRuntime.raw, jsRuntime.goFnClassID, &C.go_function_class)
+	jsRuntime.refCount.Add(1)
 	if !globalConfig.ManualFree {
-		runtime.SetFinalizer(retval, func(r *Runtime) { r.Free() })
+		runtime.SetFinalizer(jsRuntime, func(r *Runtime) { r.Free() })
 	}
-	return retval
+	return jsRuntime
 }
