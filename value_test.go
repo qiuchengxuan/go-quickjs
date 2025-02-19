@@ -1,6 +1,7 @@
 package quickjs
 
 import (
+	"encoding/json"
 	"fmt"
 	"math"
 	"math/big"
@@ -107,6 +108,29 @@ func TestFromNative(t *testing.T) {
 		property, err = context.GlobalObject().GetProperty("testValue")
 		assert.NoError(t, err)
 		assert.Equal(t, float64(float32(1.1)), property.ToNative())
+	})
+}
+
+func TestJSON(t *testing.T) {
+	NewRuntime().NewContext().With(func(context *Context) {
+		value, err := context.Eval("new Object({a: 1, b: 2})")
+		assert.NoError(t, err)
+		expected := `{"a":1,"b":2}`
+		assert.Equal(t, expected, value.JSONify())
+
+		type ut struct {
+			A int `json:"a"`
+			B int `json:"b"`
+		}
+		var actual ut
+		assert.NoError(t, value.Object().UnmarshalJSON(&actual))
+		assert.Equal(t, ut{1, 2}, actual)
+
+		global := context.GlobalObject()
+		global.SetProperty("jsonValue", json.RawMessage([]byte(expected)))
+		value, err = global.GetProperty("jsonValue")
+		assert.NoError(t, err)
+		assert.Equal(t, expected, value.JSONify())
 	})
 }
 

@@ -109,7 +109,7 @@ func TestCallGoFunction(t *testing.T) {
 func TestFinalizer(t *testing.T) {
 	runtime := NewRuntime()
 	runtime.NewContext().With(func(context *Context) {
-		value := context.addGoInterface(nil, runtime.goFnClassID)
+		value := context.addGoObject(nil)
 		Value{context, value}.free()
 		assert.Zero(t, 0, len(context.goValues))
 	})
@@ -153,7 +153,7 @@ func BenchmarkCallGoFunction(b *testing.B) {
 		assert.NoError(b, err)
 		assert.Equal(b, 3, retval.ToNative())
 		for i := 0; i < b.N; i++ {
-			context.Eval("test(1, 2)")
+			_, _ = context.Eval("test(1, 2)")
 		}
 	})
 }

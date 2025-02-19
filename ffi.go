@@ -6,26 +6,27 @@ import (
 	"unsafe"
 )
 
-type interfaceData struct {
-	value  any
-	id     uint32
-	values map[uint32]any
+type goObjectData struct {
+	value   any
+	context *Context
 }
 
-//export goInterfaceFinalizer
-func goInterfaceFinalizer(_ *C.JSRuntime, value C.JSValue) {
+//export goObjectFinalizer
+func goObjectFinalizer(_ *C.JSRuntime, value C.JSValue) {
 	dataPtr := C.JS_GetOpaque(value, C.JS_GetClassID(value))
-	data := (*interfaceData)(dataPtr)
-	delete(data.values, data.id)
+	data := (*goObjectData)(dataPtr)
+	delete(data.context.goValues, (uintptr)(C.JS_ValuePtr(value)))
 	C.free(dataPtr)
 }
 
 type callback = func(*C.JSContext, C.JSValueConst, []C.JSValueConst) C.JSValueConst
 
 //export proxyCall
-func proxyCall(ctx *C.JSContext, fn, this C.JSValueConst, argc C.int, argv *C.JSValueConst, flags C.int) C.JSValue {
+func proxyCall(
+	ctx *C.JSContext, fn, this C.JSValueConst, argc C.int, argv *C.JSValueConst, flags C.int,
+) C.JSValue {
 	refs := unsafe.Slice(argv, argc)
 	dataPtr := C.JS_GetOpaque(fn, C.JS_GetClassID(fn))
-	value := (*interfaceData)(dataPtr).value
-	return value.(callback)(ctx, this, refs)
+	data := (*goObjectData)(dataPtr)
+	return data.value.(callback)(ctx, this, refs)
 }

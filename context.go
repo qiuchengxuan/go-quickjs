@@ -9,14 +9,13 @@ import (
 )
 
 type Context struct {
-	runtime       *Runtime
-	raw           *C.JSContext
-	global        C.JSValue
-	evalRet       C.JSValue
-	goValues      map[uint32]any
-	nextGoValueID uint32
-	objectKinds   map[C.JSValue]ObjectKind
-	free          atomic.Bool
+	runtime     *Runtime
+	raw         *C.JSContext
+	global      C.JSValue
+	evalRet     C.JSValue
+	goValues    map[uintptr]any
+	objectKinds map[C.JSValue]ObjectKind
+	free        atomic.Bool
 }
 
 func (c *Context) getException() error {
@@ -45,20 +44,12 @@ func (c *Context) assert(value C.JSValue) C.JSValue {
 	return value
 }
 
-func (c *Context) addGoInterface(value any, classID C.JSClassID) C.JSValue {
-	id := c.nextGoValueID
-	for {
-		c.nextGoValueID++
-		if _, ok := c.goValues[id]; !ok {
-			break
-		}
-		id = c.nextGoValueID
-	}
-	c.goValues[id] = value
-	data := interfaceData{value, id, c.goValues}
+func (c *Context) addGoObject(value any) C.JSValue {
+	jsObject := C.JS_NewObjectClass(c.raw, C.int(c.runtime.goObject))
+	c.goValues[(uintptr)(C.JS_ValuePtr(jsObject))] = value
+	data := goObjectData{value, c}
 	dataPtr := C.malloc(C.size_t(unsafe.Sizeof(data)))
-	*(*interfaceData)(dataPtr) = data
-	jsObject := C.JS_NewObjectClass(c.raw, C.int(classID))
+	*(*goObjectData)(dataPtr) = data
 	C.JS_SetOpaque(jsObject, dataPtr)
 	return jsObject
 }
@@ -71,7 +62,7 @@ func (c *Context) addNaiveFunc(fn NaiveFunc) C.JSValue {
 		}
 		return c.toJsValue(fn(goArgs...))
 	}
-	return c.addGoInterface(callback, c.runtime.goFnClassID)
+	return c.addGoObject(callback)
 }
 
 func (c *Context) GlobalObject() Object {
@@ -169,10 +160,10 @@ func (r *Runtime) NewContext() ContextGuard {
 	C.JS_EnableBignumExt(jsContext, C.int(1))
 
 	object := C.JS_GetGlobalObject(jsContext)
-	goValues := make(map[uint32]any)
+	goValues := make(map[uintptr]any)
 	context := &Context{runtime: r, raw: jsContext, global: object, goValues: goValues}
 	proto := C.JS_NewObject(jsContext)
-	C.JS_SetClassProto(jsContext, r.goFnClassID, proto)
+	C.JS_SetClassProto(jsContext, r.goObject, proto)
 	objectKinds := make(map[C.JSValue]ObjectKind, KindDate+1)
 	for i, name := range builtinKinds {
 		jsValue, _ := context.GlobalObject().GetProperty(name)

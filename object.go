@@ -3,6 +3,7 @@ package quickjs
 //#include "ffi.h"
 import "C"
 import (
+	"encoding/json"
 	"math"
 	"unsafe"
 )
@@ -134,6 +135,10 @@ func (o Object) ToNative() any {
 	default:
 		return NotNative{}
 	}
+}
+
+func (o Object) UnmarshalJSON(out any) error {
+	return json.Unmarshal([]byte(o.JSONify()), out)
 }
 
 func (o Object) call(this C.JSValue, numArgs int, argsPtr *C.JSValue) C.JSValue {
