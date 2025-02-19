@@ -90,6 +90,13 @@ func (v Value) ToPrimitive() any {
 	}
 }
 
+func (v Value) JSONify() string {
+	jsValue := C.JS_JSONStringify(v.context.raw, v.raw, null, null)
+	output := Value{v.context, jsValue}.ToNative().(string)
+	C.JS_FreeValue(v.context.raw, jsValue)
+	return output
+}
+
 // Be aware that number could be int or double,
 // BigInt could be int or big.Int,
 // Plain object will be converted to map[string]any or []any

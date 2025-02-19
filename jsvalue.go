@@ -3,8 +3,11 @@ package quickjs
 //#include "ffi.h"
 import "C"
 import (
+	"bytes"
+	"encoding/json"
 	"math"
 	"reflect"
+	"unsafe"
 )
 
 var null = C.JS_Null()
@@ -80,6 +83,15 @@ func (c *Context) toJsValue(value any) C.JSValue {
 		return object.raw
 	case NaiveFunc:
 		return c.addNaiveFunc(value)
+	case json.Marshaler:
+		var buf bytes.Buffer
+		if err := json.NewEncoder(&buf).Encode(value); err != nil {
+			return null
+		}
+		buf.WriteByte(0)
+		data := buf.Bytes()
+		dataPtr := (*C.char)(unsafe.Pointer(&data[0]))
+		return C.JS_ParseJSON(c.raw, dataPtr, sliceSize(data)-1, nil)
 	default:
 		valueOf := reflect.ValueOf(value)
 		switch valueOf.Kind() {
