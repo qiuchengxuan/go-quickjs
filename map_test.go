@@ -8,8 +8,7 @@ import (
 )
 
 func TestMapToNative(t *testing.T) {
-	globalConfig.ManualFree = true
-	runtime := NewRuntime()
+	runtime := NewRuntime(Config{ManualFree: true})
 	guard := runtime.NewContext()
 	guard.With(func(context *Context) {
 		value, err := context.Eval(`new Map([["key", "value"], ["int", 1]])`)
@@ -33,8 +32,7 @@ func TestMapFromNative(t *testing.T) {
 }
 
 func BenchmarkMapToNative(b *testing.B) {
-	globalConfig.ManualFree = true
-	runtime := NewRuntime()
+	runtime := NewRuntime(Config{ManualFree: true})
 	guard := runtime.NewContext()
 	guard.With(func(context *Context) {
 		code := "new Map(Array.from(Array(16).keys()).map(v => [v.toString(), v]))"

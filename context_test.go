@@ -7,8 +7,7 @@ import (
 )
 
 func TestManualFree(t *testing.T) {
-	globalConfig.ManualFree = true
-	runtime := NewRuntime()
+	runtime := NewRuntime(Config{ManualFree: true})
 	context := runtime.NewContext()
 	context.Free()
 	runtime.Free()
@@ -20,8 +19,7 @@ func TestManualFree(t *testing.T) {
 }
 
 func TestCompile(t *testing.T) {
-	globalConfig.ManualFree = true
-	runtime := NewRuntime()
+	runtime := NewRuntime(Config{ManualFree: true})
 	guard := runtime.NewContext()
 
 	guard.With(func(context *Context) {
