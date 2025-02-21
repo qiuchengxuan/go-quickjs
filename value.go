@@ -68,21 +68,29 @@ func (v Value) Type() Type {
 	}
 }
 
+func (v Value) toBool() bool {
+	return C.JS_ToBool(v.context.raw, v.raw) == 1
+}
+
+func (v Value) toNumber() any {
+	if C.JS_IsInt(v.raw) == 1 {
+		var retval C.int32_t
+		C.JS_ToInt32(v.context.raw, &retval, v.raw)
+		return int(retval)
+	}
+	var retval C.double
+	C.JS_ToFloat64(v.context.raw, &retval, v.raw)
+	return float64(retval)
+}
+
 // Be aware that number could be int or double
 // nil return indicates value is null or undefined or not primitive
 func (v Value) ToPrimitive() any {
 	switch v.Type() {
 	case TypeBool:
-		return C.JS_ToBool(v.context.raw, v.raw) == 1
+		return v.toBool()
 	case TypeNumber:
-		if C.JS_IsInt(v.raw) == 1 {
-			var retval C.int32_t
-			C.JS_ToInt32(v.context.raw, &retval, v.raw)
-			return int(retval)
-		}
-		var retval C.double
-		C.JS_ToFloat64(v.context.raw, &retval, v.raw)
-		return float64(retval)
+		return v.toNumber()
 	case TypeString:
 		return v.String()
 	default:
@@ -97,6 +105,22 @@ func (v Value) JSONify() string {
 	return output
 }
 
+func (v Value) toBigInt() any {
+	var value C.int64_t
+	assert0(C.JS_ToBigInt64(v.context.raw, &value, v.raw))
+	if value > 0 { // 0 is possibly overflow, and negative value might be unsigned
+		return int(value)
+	}
+	strVal := v.String()
+	if len(strVal) < 19 {
+		retval, _ := strconv.Atoi(strVal)
+		return retval
+	}
+	var retval big.Int
+	retval.SetString(strVal, 10)
+	return retval
+}
+
 // Be aware that number could be int or double,
 // BigInt could be int or big.Int,
 // Plain object will be converted to map[string]any or []any
@@ -108,36 +132,17 @@ func (v Value) ToNative() any {
 	case TypeUndefined:
 		return Undefined
 	case TypeBool:
-		return C.JS_ToBool(v.context.raw, v.raw) == 1
+		return v.toBool()
 	case TypeNumber:
-		if C.JS_IsInt(v.raw) == 1 {
-			var retval C.int32_t
-			C.JS_ToInt32(v.context.raw, &retval, v.raw)
-			return int(retval)
-		}
-		var retval C.double
-		C.JS_ToFloat64(v.context.raw, &retval, v.raw)
-		return float64(retval)
+		return v.toNumber()
 	case TypeBigInt:
-		var value C.int64_t
-		assert0(C.JS_ToBigInt64(v.context.raw, &value, v.raw))
-		if value > 0 { // 0 is possibly overflow, and negative value might be unsigned
-			return int(value)
-		}
-		strVal := v.String()
-		if len(strVal) < 19 {
-			retval, _ := strconv.Atoi(strVal)
-			return retval
-		}
-		var retval big.Int
-		retval.SetString(strVal, 10)
-		return retval
+		return v.toBigInt()
 	case TypeString:
 		return v.String()
 	case TypeObject:
 		return v.Object().ToNative()
 	default:
-		return NotNative{}
+		return NotNative{v.String()}
 	}
 }
 

@@ -90,28 +90,20 @@ func TestSetProperty(t *testing.T) {
 	})
 }
 
-func TestCallGoFunction(t *testing.T) {
+func TestFinalizer(t *testing.T) {
 	NewRuntime().NewContext().With(func(context *Context) {
-		object := context.GlobalObject()
-		counter := 0
-		naiveFunc := func(args ...any) (any, error) {
-			counter = len(args)
-			return args[0].(int) + args[1].(int), nil
-		}
-		object.SetProperty("test", naiveFunc)
-		retval, err := context.Eval("test(1, 2);")
-		assert.NoError(t, err)
-		assert.Equal(t, 2, counter)
-		assert.Equal(t, 3, retval.ToNative())
+		Value{context, context.goObject(nil)}.free()
+		assert.Zero(t, 0, len(context.goValues))
 	})
 }
 
-func TestFinalizer(t *testing.T) {
-	runtime := NewRuntime()
-	runtime.NewContext().With(func(context *Context) {
-		value := context.addGoObject(nil)
-		Value{context, value}.free()
-		assert.Zero(t, 0, len(context.goValues))
+func TestCall(t *testing.T) {
+	NewRuntime().NewContext().With(func(context *Context) {
+		object, _ := context.GlobalObject().GetProperty("Object")
+		this := context.ToValue(nil)
+		value, err := object.Object().Call(this, "test")
+		assert.NoError(t, err)
+		assert.Equal(t, "test", value.ToNative())
 	})
 }
 

@@ -13,6 +13,46 @@ import (
 
 var null = C.JS_Null()
 
+func (c *Context) reflectToJsValue(value any) C.JSValue {
+	valueOf := reflect.ValueOf(value)
+	switch valueOf.Kind() {
+	case reflect.Pointer:
+		return c.toJsValue(valueOf.Elem().Interface())
+	case reflect.Map:
+		class, _ := c.GlobalObject().GetProperty("Map")
+		items := make([]any, 0, valueOf.Len())
+		iter := valueOf.MapRange()
+		for iter.Next() {
+			item := []any{iter.Key().Interface(), iter.Value().Interface()}
+			items = append(items, item)
+		}
+		jsValue := c.toJsValue(items)
+		jsMap := C.JS_CallConstructor(c.raw, class.raw, 1, &jsValue)
+		C.JS_FreeValue(c.raw, jsValue)
+		return jsMap
+	case reflect.Array, reflect.Slice:
+		array := Value{c, C.JS_NewArray(c.raw)}.Object().Array()
+		for i := 0; i < valueOf.Len(); i++ {
+			array.Set(i, valueOf.Index(i).Interface())
+		}
+		return array.raw
+	case reflect.Struct:
+		if _, ok := value.(ViaJSON); ok {
+			var buf bytes.Buffer
+			if err := json.NewEncoder(&buf).Encode(value); err != nil {
+				return null
+			}
+			buf.WriteByte(0)
+			data := buf.Bytes()
+			dataPtr := (*C.char)(unsafe.Pointer(&data[0]))
+			return C.JS_ParseJSON(c.raw, dataPtr, sliceSize(data)-1, nil)
+		}
+		return C.JS_Undefined()
+	default:
+		return C.JS_Undefined()
+	}
+}
+
 func (c *Context) toJsValue(value any) C.JSValue {
 	switch value := value.(type) {
 	case bool:
@@ -51,8 +91,6 @@ func (c *Context) toJsValue(value any) C.JSValue {
 		return C.JS_NewFloat64(c.raw, C.double(value))
 	case float64:
 		return C.JS_NewFloat64(c.raw, C.double(value))
-	case *big.Int:
-		return c.toJsValue(*value)
 	case big.Int:
 		arg := C.JS_NewString(c.raw, strPtr(value.String()+"\x00"))
 		bigInt, _ := c.GlobalObject().GetProperty("BigInt")
@@ -90,17 +128,8 @@ func (c *Context) toJsValue(value any) C.JSValue {
 			object.setProperty(key, c.toJsValue(value))
 		}
 		return object.raw
-	case NaiveFunc:
-		return c.addNaiveFunc(value)
-	case json.Marshaler:
-		var buf bytes.Buffer
-		if err := json.NewEncoder(&buf).Encode(value); err != nil {
-			return null
-		}
-		buf.WriteByte(0)
-		data := buf.Bytes()
-		dataPtr := (*C.char)(unsafe.Pointer(&data[0]))
-		return C.JS_ParseJSON(c.raw, dataPtr, sliceSize(data)-1, nil)
+	case Value:
+		return value.raw
 	default:
 		if value == Undefined {
 			return C.JS_Undefined()
@@ -108,28 +137,10 @@ func (c *Context) toJsValue(value any) C.JSValue {
 		if value == nil {
 			return null
 		}
-		valueOf := reflect.ValueOf(value)
-		switch valueOf.Kind() {
-		case reflect.Map:
-			class, _ := c.GlobalObject().GetProperty("Map")
-			items := make([]any, 0, valueOf.Len())
-			iter := valueOf.MapRange()
-			for iter.Next() {
-				item := []any{iter.Key().Interface(), iter.Value().Interface()}
-				items = append(items, item)
-			}
-			jsValue := c.toJsValue(items)
-			jsMap := C.JS_CallConstructor(c.raw, class.raw, 1, &jsValue)
-			C.JS_FreeValue(c.raw, jsValue)
-			return jsMap
-		case reflect.Array, reflect.Slice:
-			array := Value{c, C.JS_NewArray(c.raw)}.Object().Array()
-			for i := 0; i < valueOf.Len(); i++ {
-				array.Set(i, valueOf.Index(i).Interface())
-			}
-			return array.raw
-		default:
-			return C.JS_Undefined()
-		}
+		return c.reflectToJsValue(value)
 	}
+}
+
+func (c *Context) ToValue(value any) Value {
+	return Value{c, c.toJsValue(value)}
 }

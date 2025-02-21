@@ -10,18 +10,24 @@ import (
 
 type ObjectKind uint8
 
-var builtinKinds = [13]string{
-	"Object", "ArrayBuffer",
+var builtinKinds = [17]string{
+	"Object", "Boolean",
+	"Number", "BigInt", "Date", "String",
 	"Int8Array", "Int16Array", "Int32Array",
 	"Uint8Array", "Uint16Array", "Uint32Array",
 	"Float32Array", "Float64Array",
-	"Map", "Set", "Date",
+	"Map", "Set",
+	"ArrayBuffer",
 }
 
 const (
 	KindArray ObjectKind = iota
 	KindPlainObject
-	KindArrayBuffer
+	KindBoolean
+	KindNumber
+	KindBigInt
+	KindDate
+	KindString
 	KindInt8Array
 	KindInt16Array
 	KindInt32Array
@@ -32,7 +38,7 @@ const (
 	KindFloat64Array
 	KindMap
 	KindSet
-	KindDate
+	KindArrayBuffer
 	KindUnknown = math.MaxUint8
 )
 
@@ -106,10 +112,18 @@ func (o Object) ToNative() any {
 	switch o.Kind() {
 	case KindPlainObject:
 		return o.plainObjectToNative()
+	case KindBoolean:
+		return o.toBool()
+	case KindNumber:
+		return o.toNumber()
+	case KindString:
+		return o.String()
+	case KindBigInt:
+		return o.toBigInt()
+	case KindDate:
+		return o.Date().ToNative()
 	case KindArray:
 		return o.Array().ToNative()
-	case KindArrayBuffer:
-		return o.ArrayBuffer().ToNative()
 	case KindInt8Array:
 		return TypedArray[int8]{o}.ToNative()
 	case KindInt16Array:
@@ -130,19 +144,40 @@ func (o Object) ToNative() any {
 		return o.Map().ToNative()
 	case KindSet:
 		return o.Set().ToNative()
-	case KindDate:
-		return o.Date().ToNative()
+	case KindArrayBuffer:
+		return o.ArrayBuffer().ToNative()
 	default:
-		return NotNative{}
+		if classID := C.JS_GetClassID(o.raw); classID == o.context.runtime.goObject {
+			dataPtr := C.JS_GetOpaque(o.raw, classID)
+			data := (*goObjectData)(dataPtr)
+			return data.value
+		}
+		return NotNative{o.String()}
 	}
 }
 
-func (o Object) UnmarshalJSON(out any) error {
+func (o Object) JsonOut(out any) error {
 	return json.Unmarshal([]byte(o.JSONify()), out)
 }
 
 func (o Object) call(this C.JSValue, numArgs int, argsPtr *C.JSValue) C.JSValue {
 	return C.JS_Call(o.context.raw, o.raw, this, C.int(numArgs), argsPtr)
+}
+
+func (o Object) IsFunction() bool {
+	return C.JS_IsFunction(o.context.raw, o.raw) == 1
+}
+
+func (o Object) Call(this Value, args ...any) (Value, error) {
+	jsArgs := make([]C.JSValue, len(args))
+	for i, arg := range args {
+		jsArgs[i] = o.context.toJsValue(arg)
+	}
+	retval := o.call(this.raw, len(args), &jsArgs[0])
+	if err := o.context.checkException(retval); err != nil {
+		return o.context.ToValue(Undefined), err
+	}
+	return Value{o.context, retval}, nil
 }
 
 func (o Object) getProperty(name string) C.JSValue {
@@ -165,7 +200,6 @@ func (o Object) setProperty(name string, value C.JSValue) {
 // []byte will be converted to Uint8Array since []byte and []uint8 is the same
 // []any and map[string]any will be converted to plain object
 // Any form of map will be converted to Map
-// If you want add function to global object, wrap as NaiveFunc for better performance
 func (o Object) SetProperty(name string, value any) {
 	o.setProperty(name, o.context.toJsValue(value))
 }
@@ -188,5 +222,15 @@ func (o Object) SetPropertyByIndex(index uint32, value any) {
 	o.setPropertyByIndex(index, o.context.toJsValue(value))
 }
 
+func (o Object) AddFunc(name string, fn RawFunc) {
+	o.setProperty(name, o.context.rawFunc(fn))
+}
+
 // Assume value is Object
 func (v Value) Object() Object { return Object{v} }
+
+type GlobalObject struct{ Object }
+
+func (o GlobalObject) AddFunc(name string, fn Func) {
+	o.setProperty(name, o.context.naiveFunc(fn))
+}

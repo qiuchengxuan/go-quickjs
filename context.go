@@ -18,7 +18,7 @@ type Context struct {
 	free        atomic.Bool
 }
 
-func (c *Context) addGoObject(value any) C.JSValue {
+func (c *Context) goObject(value any) C.JSValue {
 	jsObject := C.JS_NewObjectClass(c.raw, C.int(c.runtime.goObject))
 	c.goValues[(uintptr)(C.JS_ValuePtr(jsObject))] = value
 	data := goObjectData{value, c}
@@ -28,23 +28,8 @@ func (c *Context) addGoObject(value any) C.JSValue {
 	return jsObject
 }
 
-func (c *Context) addNaiveFunc(fn NaiveFunc) C.JSValue {
-	callback := func(_ *C.JSContext, _ C.JSValueConst, args []C.JSValueConst) C.JSValueConst {
-		goArgs := make([]any, len(args))
-		for i, arg := range args {
-			goArgs[i] = Value{c, arg}.ToNative()
-		}
-		retval, err := fn(goArgs...)
-		if err != nil {
-			return c.ThrowInternalError("%s", err)
-		}
-		return c.toJsValue(retval)
-	}
-	return c.addGoObject(callback)
-}
-
-func (c *Context) GlobalObject() Object {
-	return Value{c, c.global}.Object()
+func (c *Context) GlobalObject() GlobalObject {
+	return GlobalObject{Value{c, c.global}.Object()}
 }
 
 func (c *Context) Compile(code string) (ByteCode, error) {
