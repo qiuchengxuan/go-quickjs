@@ -4,7 +4,6 @@ package quickjs
 import "C"
 import (
 	"encoding/json"
-	"math"
 	"unsafe"
 )
 
@@ -39,7 +38,8 @@ const (
 	KindMap
 	KindSet
 	KindArrayBuffer
-	KindUnknown = math.MaxUint8
+	KindUnknown
+	KindMax = KindUnknown
 )
 
 type Object struct{ Value }
@@ -111,6 +111,11 @@ func (o Object) plainObjectToNative() any {
 func (o Object) ToNative() any {
 	switch o.Kind() {
 	case KindPlainObject:
+		if classID := C.JS_GetClassID(o.raw); classID == o.context.runtime.goObject {
+			dataPtr := C.JS_GetOpaque(o.raw, C.JS_GetClassID(o.raw))
+			data := (*goObjectData)(dataPtr)
+			return data.value
+		}
 		return o.plainObjectToNative()
 	case KindBoolean:
 		return o.toBool()
@@ -147,11 +152,6 @@ func (o Object) ToNative() any {
 	case KindArrayBuffer:
 		return o.ArrayBuffer().ToNative()
 	default:
-		if classID := C.JS_GetClassID(o.raw); classID == o.context.runtime.goObject {
-			dataPtr := C.JS_GetOpaque(o.raw, classID)
-			data := (*goObjectData)(dataPtr)
-			return data.value
-		}
 		return NotNative{o.String()}
 	}
 }
@@ -222,7 +222,7 @@ func (o Object) SetPropertyByIndex(index uint32, value any) {
 	o.setPropertyByIndex(index, o.context.toJsValue(value))
 }
 
-func (o Object) AddFunc(name string, fn RawFunc) {
+func (o Object) SetFunc(name string, fn Func) {
 	o.setProperty(name, o.context.rawFunc(fn))
 }
 
@@ -231,6 +231,10 @@ func (v Value) Object() Object { return Object{v} }
 
 type GlobalObject struct{ Object }
 
-func (o GlobalObject) AddFunc(name string, fn Func) {
-	o.setProperty(name, o.context.naiveFunc(fn))
+func (o GlobalObject) SetFunc(name string, fn Func, constructor ...bool) {
+	jsValue := o.context.rawFunc(fn)
+	if len(constructor) > 0 && constructor[0] {
+		C.JS_SetConstructorBit(o.context.raw, jsValue, 1)
+	}
+	o.setProperty(name, jsValue)
 }

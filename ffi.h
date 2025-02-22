@@ -13,6 +13,6 @@ static inline int JS_ValueTag(JSValueConst val) { return JS_VALUE_GET_TAG(val); 
 
 extern JSValue ThrowInternalError(JSContext *ctx, const char *fmt);
 
-extern JSClassDef go_object_class;
+extern JSClassDef go_object_class, go_function_class;
 
 extern JSValue proxyCall(JSContext *ctx, JSValueConst fn, JSValueConst this, int argc, JSValueConst *argv, int flags);

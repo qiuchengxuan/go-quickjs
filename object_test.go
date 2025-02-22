@@ -92,12 +92,39 @@ func TestSetProperty(t *testing.T) {
 
 func TestFinalizer(t *testing.T) {
 	NewRuntime().NewContext().With(func(context *Context) {
-		Value{context, context.goObject(nil)}.free()
+		proto, classID := context.goObjectProto, context.runtime.goObject
+		Value{context, context.goObject(nil, proto, classID)}.free()
 		assert.Zero(t, 0, len(context.goValues))
 	})
 }
 
-func TestCall(t *testing.T) {
+type jsonMarshaller struct {
+	A int    `json:"a"`
+	B string `json:"b"`
+}
+
+func (jsonMarshaller) QuickjsJsonMarshal() {}
+
+func TestJsonMarshal(t *testing.T) {
+	NewRuntime().NewContext().With(func(context *Context) {
+		value, err := context.Eval(`new Object({a: 1, b: "2"})`)
+		assert.NoError(t, err)
+		expected := `{"a":1,"b":"2"}`
+		assert.Equal(t, expected, value.JSONify())
+
+		var actual jsonMarshaller
+		assert.NoError(t, value.Object().JsonOut(&actual))
+		assert.Equal(t, jsonMarshaller{1, "2"}, actual)
+
+		global := context.GlobalObject()
+		global.SetProperty("jsonValue", jsonMarshaller{1, "2"})
+		value, err = global.GetProperty("jsonValue")
+		assert.NoError(t, err)
+		assert.Equal(t, expected, value.JSONify())
+	})
+}
+
+func TestNativeCall(t *testing.T) {
 	NewRuntime().NewContext().With(func(context *Context) {
 		object, _ := context.GlobalObject().GetProperty("Object")
 		this := context.ToValue(nil)
@@ -131,21 +158,5 @@ func BenchmarkObjectFromNative(b *testing.B) {
 			global.SetProperty("whatever", expected)
 		}
 		b.StopTimer()
-	})
-}
-
-func BenchmarkCallGoFunction(b *testing.B) {
-	NewRuntime().NewContext().With(func(context *Context) {
-		naiveFunc := func(args ...any) any {
-			return args[0].(int) + args[1].(int)
-		}
-		global := context.GlobalObject()
-		global.SetProperty("test", naiveFunc)
-		retval, err := context.Eval("test(1, 2)")
-		assert.NoError(b, err)
-		assert.Equal(b, 3, retval.ToNative())
-		for i := 0; i < b.N; i++ {
-			_, _ = context.Eval("test(1, 2)")
-		}
 	})
 }

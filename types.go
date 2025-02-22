@@ -10,10 +10,6 @@ type undefined struct{}
 
 var Undefined *undefined = nil
 
-type ViaJSON interface {
-	ViaJSON()
-}
-
-type ProxyCaller interface {
-	ProxyCall(Call) (Value, error)
+type QuickjsJsonMarshal interface {
+	QuickjsJsonMarshal()
 }

@@ -9,17 +9,19 @@ import (
 )
 
 type Context struct {
-	runtime     *Runtime
-	raw         *C.JSContext
-	global      C.JSValue
-	evalRet     C.JSValue
-	goValues    map[uintptr]any
-	objectKinds map[C.JSValue]ObjectKind
-	free        atomic.Bool
+	runtime       *Runtime
+	raw           *C.JSContext
+	global        C.JSValue
+	evalRet       C.JSValue
+	goFuncProto   C.JSValueConst
+	goObjectProto C.JSValueConst
+	goValues      map[uintptr]any
+	objectKinds   map[C.JSValue]ObjectKind
+	free          atomic.Bool
 }
 
-func (c *Context) goObject(value any) C.JSValue {
-	jsObject := C.JS_NewObjectClass(c.raw, C.int(c.runtime.goObject))
+func (c *Context) goObject(value any, proto C.JSValueConst, classID C.JSClassID) C.JSValue {
+	jsObject := C.JS_NewObjectProtoClass(c.raw, proto, classID)
 	c.goValues[(uintptr)(C.JS_ValuePtr(jsObject))] = value
 	data := goObjectData{value, c}
 	dataPtr := C.malloc(C.size_t(unsafe.Sizeof(data)))
@@ -125,9 +127,11 @@ func (r *Runtime) NewContext() ContextGuard {
 	object := C.JS_GetGlobalObject(jsContext)
 	goValues := make(map[uintptr]any)
 	context := &Context{runtime: r, raw: jsContext, global: object, goValues: goValues}
-	proto := C.JS_NewObject(jsContext)
-	C.JS_SetClassProto(jsContext, r.goObject, proto)
-	objectKinds := make(map[C.JSValue]ObjectKind, KindDate+1)
+	context.goObjectProto = C.JS_NewObject(jsContext)
+	C.JS_SetClassProto(jsContext, r.goObject, context.goObjectProto)
+	context.goFuncProto = C.JS_NewObject(jsContext)
+	C.JS_SetClassProto(jsContext, r.goFunc, context.goFuncProto)
+	objectKinds := make(map[C.JSValue]ObjectKind, KindMax)
 	for i, name := range builtinKinds {
 		jsValue, _ := context.GlobalObject().GetProperty(name)
 		objectKinds[jsValue.raw] = ObjectKind(i + 1)

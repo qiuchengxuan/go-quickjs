@@ -19,14 +19,16 @@ func goObjectFinalizer(_ *C.JSRuntime, value C.JSValue) {
 	C.free(dataPtr)
 }
 
-type callback = func(*C.JSContext, C.JSValueConst, C.JSValueConst, []C.JSValueConst) C.JSValueConst
+type jsContext = C.JSContext
+type jsValue = C.JSValue
+type jsValueC = C.JSValueConst
+
+type callback = func(*jsContext, jsValueC, jsValueC, []jsValueC, C.int) jsValueC
 
 //export proxyCall
-func proxyCall(
-	ctx *C.JSContext, fn, this C.JSValueConst, argc C.int, argv *C.JSValueConst, flags C.int,
-) C.JSValue {
+func proxyCall(ctx *jsContext, fn, this jsValueC, argc C.int, argv *jsValueC, flags C.int) jsValue {
 	refs := unsafe.Slice(argv, argc)
 	dataPtr := C.JS_GetOpaque(fn, C.JS_GetClassID(fn))
 	data := (*goObjectData)(dataPtr)
-	return data.value.(callback)(ctx, fn, this, refs)
+	return data.value.(callback)(ctx, fn, this, refs, flags)
 }
