@@ -4,6 +4,11 @@
 JSClassDef go_object_class = {
     "goObject",
     .finalizer = goObjectFinalizer,
+};
+
+JSClassDef go_function_class = {
+    "goFunction",
+    .finalizer = goObjectFinalizer,
     .call = proxyCall,
 };
 

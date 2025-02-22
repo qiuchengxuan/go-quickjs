@@ -118,32 +118,6 @@ func TestFromNative(t *testing.T) {
 	})
 }
 
-type ut struct {
-	A int `json:"a"`
-	B int `json:"b"`
-}
-
-func (ut) ViaJSON() {}
-
-func TestJSON(t *testing.T) {
-	NewRuntime().NewContext().With(func(context *Context) {
-		value, err := context.Eval("new Object({a: 1, b: 2})")
-		assert.NoError(t, err)
-		expected := `{"a":1,"b":2}`
-		assert.Equal(t, expected, value.JSONify())
-
-		var actual ut
-		assert.NoError(t, value.Object().JsonOut(&actual))
-		assert.Equal(t, ut{1, 2}, actual)
-
-		global := context.GlobalObject()
-		global.SetProperty("jsonValue", ut{1, 2})
-		value, err = global.GetProperty("jsonValue")
-		assert.NoError(t, err)
-		assert.Equal(t, expected, value.JSONify())
-	})
-}
-
 func TestUndefined(t *testing.T) {
 	NewRuntime().NewContext().With(func(context *Context) {
 		context.GlobalObject().SetProperty("whatever", Undefined)

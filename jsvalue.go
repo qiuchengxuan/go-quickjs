@@ -37,7 +37,7 @@ func (c *Context) reflectToJsValue(value any) C.JSValue {
 		}
 		return array.raw
 	case reflect.Struct:
-		if _, ok := value.(ViaJSON); ok {
+		if _, ok := value.(PlainJSON); ok {
 			var buf bytes.Buffer
 			if err := json.NewEncoder(&buf).Encode(value); err != nil {
 				return null
@@ -47,7 +47,7 @@ func (c *Context) reflectToJsValue(value any) C.JSValue {
 			dataPtr := (*C.char)(unsafe.Pointer(&data[0]))
 			return C.JS_ParseJSON(c.raw, dataPtr, sliceSize(data)-1, nil)
 		}
-		return C.JS_Undefined()
+		return c.goObject(value, c.runtime.goObject)
 	default:
 		return C.JS_Undefined()
 	}
