@@ -9,15 +9,16 @@ import (
 )
 
 type Context struct {
-	runtime       *Runtime
-	raw           *C.JSContext
-	global        C.JSValue
-	evalRet       C.JSValue
-	goFuncProto   C.JSValueConst
-	goObjectProto C.JSValueConst
-	goValues      map[uintptr]any
-	objectKinds   map[C.JSValue]ObjectKind
-	free          atomic.Bool
+	runtime          *Runtime
+	raw              *C.JSContext
+	global           C.JSValue
+	evalRet          C.JSValue
+	goObjectProto    C.JSValueConst
+	goFuncProto      C.JSValueConst
+	goIndexCallProto C.JSValueConst
+	goValues         map[uintptr]any
+	objectKinds      map[C.JSValue]ObjectKind
+	free             atomic.Bool
 }
 
 func (c *Context) goObject(value any, proto C.JSValueConst, classID C.JSClassID) C.JSValue {
@@ -27,6 +28,12 @@ func (c *Context) goObject(value any, proto C.JSValueConst, classID C.JSClassID)
 	dataPtr := C.malloc(C.size_t(unsafe.Sizeof(data)))
 	*(*goObjectData)(dataPtr) = data
 	C.JS_SetOpaque(jsObject, dataPtr)
+	return jsObject
+}
+
+func (c *Context) goIndexCall(value int) C.JSValue {
+	jsObject := C.JS_NewObjectProtoClass(c.raw, c.goIndexCallProto, c.runtime.goIndexCall)
+	C.JS_SetOpaque(jsObject, unsafe.Pointer(uintptr(value)))
 	return jsObject
 }
 
@@ -131,6 +138,8 @@ func (r *Runtime) NewContext() ContextGuard {
 	C.JS_SetClassProto(jsContext, r.goObject, context.goObjectProto)
 	context.goFuncProto = C.JS_NewObject(jsContext)
 	C.JS_SetClassProto(jsContext, r.goFunc, context.goFuncProto)
+	context.goIndexCallProto = C.JS_NewObject(jsContext)
+	C.JS_SetClassProto(jsContext, r.goIndexCall, context.goIndexCallProto)
 	objectKinds := make(map[C.JSValue]ObjectKind, KindMax)
 	for i, name := range builtinKinds {
 		jsValue, _ := context.GlobalObject().GetProperty(name)

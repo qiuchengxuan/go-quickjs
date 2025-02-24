@@ -94,7 +94,7 @@ func TestFromNative(t *testing.T) {
 
 		bigNumber := big.NewInt(math.MaxInt64)
 		bigNumber.Add(bigNumber, bigNumber)
-		global.SetProperty("bigNumber", bigNumber)
+		global.SetProperty("bigNumber", *bigNumber)
 		property, err = global.GetProperty("bigNumber")
 		assert.NoError(t, err)
 		assert.Equal(t, *bigNumber, property.ToNative())

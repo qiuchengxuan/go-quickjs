@@ -197,9 +197,35 @@ func (o Object) setProperty(name string, value C.JSValue) {
 	C.JS_SetPropertyStr(o.context.raw, o.raw, strPtr(name+"\x00"), value)
 }
 
-// []byte will be converted to Uint8Array since []byte and []uint8 is the same
-// []any and map[string]any will be converted to plain object
-// Any form of map will be converted to Map
+// Set object properties with go native types
+//
+// Better not pass pointer types or this function may not handle it properly, except structs.
+//
+// Go values are converted to JS values as following:
+//
+// * nil to null
+//
+// * Undefined to undefined
+//
+// * bool to boolean
+//
+// * (u)int(8/16/32/64), float32, float64 to Number
+//
+// * big.Int to bigint
+//
+// * string to string
+//
+// * (u)int(8/16/32) to (U)int(8/16/32)Array
+//
+// * []any or map[string]any to object
+//
+// * Any other form of map to Map
+//
+// * Any other form of slice or array to Array
+//
+//   - Structs will be wrapped into javascript object with specific prototype,
+//     if struct implements IndexCallable, return value from MethodList will
+//     be added to that object for calling go method from JS.
 func (o Object) SetProperty(name string, value any) {
 	o.setProperty(name, o.context.toJsValue(value))
 }

@@ -23,12 +23,28 @@ type jsContext = C.JSContext
 type jsValue = C.JSValue
 type jsValueC = C.JSValueConst
 
-type callback = func(*jsContext, jsValueC, jsValueC, []jsValueC, C.int) jsValueC
-
 //export proxyCall
-func proxyCall(ctx *jsContext, fn, this jsValueC, argc C.int, argv *jsValueC, flags C.int) jsValue {
-	refs := unsafe.Slice(argv, argc)
+func proxyCall(_ *jsContext, fn, this jsValueC, argc C.int, argv *jsValueC, flags C.int) jsValue {
+	args := unsafe.Slice(argv, argc)
 	dataPtr := C.JS_GetOpaque(fn, C.JS_GetClassID(fn))
 	data := (*goObjectData)(dataPtr)
-	return data.value.(callback)(ctx, fn, this, refs, flags)
+	retval, err := data.value.(Func)(Call{data.context, fn, this, args, flags})
+	if err != nil {
+		return data.context.ThrowInternalError("%s", err)
+	}
+	return retval.raw
+}
+
+//export indexCall
+func indexCall(_ *jsContext, fn, this jsValueC, argc C.int, argv *jsValueC, flags C.int) jsValue {
+	args := unsafe.Slice(argv, argc)
+	dataPtr := C.JS_GetOpaque(this, C.JS_GetClassID(this))
+	data := (*goObjectData)(dataPtr)
+	index := int(uintptr(C.JS_GetOpaque(fn, C.JS_GetClassID(fn))))
+	call := Call{data.context, fn, this, args, flags}
+	retval, err := data.value.(IndexCallable).IndexCall(index, call)
+	if err != nil {
+		return data.context.ThrowInternalError("%s", err)
+	}
+	return retval.raw
 }

@@ -15,9 +15,14 @@ var null = C.JS_Null()
 
 func (c *Context) reflectToJsValue(value any) C.JSValue {
 	valueOf := reflect.ValueOf(value)
+	if valueOf.Kind() == reflect.Pointer {
+		deref := valueOf.Elem()
+		if deref.Kind() != reflect.Struct {
+			return c.toJsValue(deref.Interface())
+		}
+		valueOf = deref
+	}
 	switch valueOf.Kind() {
-	case reflect.Pointer:
-		return c.toJsValue(valueOf.Elem().Interface())
 	case reflect.Map:
 		class, _ := c.GlobalObject().GetProperty("Map")
 		items := make([]any, 0, valueOf.Len())
@@ -47,7 +52,14 @@ func (c *Context) reflectToJsValue(value any) C.JSValue {
 			dataPtr := (*C.char)(unsafe.Pointer(&data[0]))
 			return C.JS_ParseJSON(c.raw, dataPtr, sliceSize(data)-1, nil)
 		}
-		return c.goObject(value, c.goObjectProto, c.runtime.goObject)
+		jsValue := c.goObject(value, c.goObjectProto, c.runtime.goObject)
+		if callable, ok := value.(IndexCallable); ok {
+			object := Value{c, jsValue}.Object()
+			for i, name := range callable.MethodList() {
+				object.setProperty(name, c.goIndexCall(i))
+			}
+		}
+		return jsValue
 	default:
 		return C.JS_Undefined()
 	}

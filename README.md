@@ -95,3 +95,28 @@ Value converted as following:
 | Set          | []any                   |
 | Date         | time.Time               |
 | *            | NotNative               |
+
+Performance
+-----------
+
+Benchmark result on my homelab server as following:
+
+```
+go test -bench=. . -timeout 20s -run=^$
+goos: linux
+goarch: amd64
+pkg: github.com/qiuchengxuan/go-quickjs
+cpu: Intel(R) CC150 CPU @ 3.50GHz
+BenchmarkArrayToNative-16                 165372              7188 ns/op
+BenchmarkArrayFromNative-16               316633              3763 ns/op
+BenchmarkNativeCall-16                    307240              3886 ns/op
+BenchmarkIndexCall-16                     306832              3856 ns/op
+BenchmarkMapToNative-16                    46866             25144 ns/op
+BenchmarkMapFromNative-16                  56539             21543 ns/op
+BenchmarkGetKind-16                      3004094               391.0 ns/op
+BenchmarkObjectFromNative-16              201038              5976 ns/op
+BenchmarkSetToNative-16                   119362             10050 ns/op
+BenchmarkGetType-16                     18035254                66.07 ns/op
+PASS
+ok      github.com/qiuchengxuan/go-quickjs      13.247s
+```

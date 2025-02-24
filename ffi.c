@@ -12,6 +12,11 @@ JSClassDef go_function_class = {
     .call = proxyCall,
 };
 
+JSClassDef go_indexcall_class = {
+    "goIndexCall",
+    .call = indexCall,
+};
+
 JSValue ThrowInternalError(JSContext *ctx, const char *fmt) {
     return JS_ThrowInternalError(ctx, "%s", fmt);
 }

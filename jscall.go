@@ -23,12 +23,5 @@ func (c Call) Flags() uint { return uint(c.flags) }
 type Func = func(call Call) (Value, error)
 
 func (c *Context) rawFunc(rawFunc Func) C.JSValue {
-	cb := func(_ *C.JSContext, fn, this jsValueC, args []jsValueC, flags C.int) jsValueC {
-		value, err := rawFunc(Call{c, fn, this, args, flags})
-		if err != nil {
-			return c.ThrowInternalError("%s", err)
-		}
-		return value.raw
-	}
-	return c.goObject(cb, c.goFuncProto, c.runtime.goFunc)
+	return c.goObject(rawFunc, c.goFuncProto, c.runtime.goFunc)
 }
