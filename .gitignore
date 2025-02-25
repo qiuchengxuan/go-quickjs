@@ -1,1 +1,4 @@
 /.test-coverage.txt
+/go-quickjs.test
+/profile.out
+

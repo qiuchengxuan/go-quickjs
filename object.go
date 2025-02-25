@@ -171,7 +171,7 @@ func (o Object) IsFunction() bool {
 func (o Object) Call(this Value, args ...any) (Value, error) {
 	jsArgs := make([]C.JSValue, len(args))
 	for i, arg := range args {
-		jsArgs[i] = o.context.toJsValue(arg)
+		jsArgs[i] = o.context.toValue(arg)
 	}
 	retval := o.call(this.raw, len(args), &jsArgs[0])
 	if err := o.context.checkException(retval); err != nil {
@@ -197,37 +197,13 @@ func (o Object) setProperty(name string, value C.JSValue) {
 	C.JS_SetPropertyStr(o.context.raw, o.raw, strPtr(name+"\x00"), value)
 }
 
-// Set object properties with go native types
-//
-// Better not pass pointer types or this function may not handle it properly, except structs.
-//
-// Go values are converted to JS values as following:
-//
-// * nil to null
-//
-// * Undefined to undefined
-//
-// * bool to boolean
-//
-// * (u)int(8/16/32/64), float32, float64 to Number
-//
-// * big.Int to bigint
-//
-// * string to string
-//
-// * (u)int(8/16/32) to (U)int(8/16/32)Array
-//
-// * []any or map[string]any to object
-//
-// * Any other form of map to Map
-//
-// * Any other form of slice or array to Array
-//
-//   - Structs will be wrapped into javascript object with specific prototype,
-//     if struct implements IndexCallable, return value from MethodList will
-//     be added to that object for calling go method from JS.
+// A shortcut to o.SetValue(name, o.ToValue(value))
 func (o Object) SetProperty(name string, value any) {
-	o.setProperty(name, o.context.toJsValue(value))
+	o.setProperty(name, o.context.toValue(value))
+}
+
+func (o Object) SetValue(name string, value Value) {
+	o.setProperty(name, value.raw)
 }
 
 func (o Object) getPropertyByIndex(index uint32) C.JSValue {
@@ -245,7 +221,7 @@ func (o Object) setPropertyByIndex(index uint32, value C.JSValue) {
 }
 
 func (o Object) SetPropertyByIndex(index uint32, value any) {
-	o.setPropertyByIndex(index, o.context.toJsValue(value))
+	o.setPropertyByIndex(index, o.context.toValue(value))
 }
 
 func (o Object) SetFunc(name string, fn Func) {

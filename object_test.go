@@ -1,6 +1,7 @@
 package quickjs
 
 import (
+	"encoding/json"
 	"math"
 	"reflect"
 	"strconv"
@@ -103,7 +104,10 @@ type jsonMarshaller struct {
 	B string `json:"b"`
 }
 
-func (jsonMarshaller) QuickjsJsonMarshal() {}
+func (m *jsonMarshaller) MarshalJSON() ([]byte, error) {
+	type helper jsonMarshaller
+	return json.Marshal((*helper)(m))
+}
 
 func TestJsonMarshal(t *testing.T) {
 	NewRuntime().NewContext().With(func(context *Context) {
@@ -117,7 +121,7 @@ func TestJsonMarshal(t *testing.T) {
 		assert.Equal(t, jsonMarshaller{1, "2"}, actual)
 
 		global := context.GlobalObject()
-		global.SetProperty("jsonValue", jsonMarshaller{1, "2"})
+		global.SetProperty("jsonValue", &jsonMarshaller{1, "2"})
 		value, err = global.GetProperty("jsonValue")
 		assert.NoError(t, err)
 		assert.Equal(t, expected, value.JSONify())

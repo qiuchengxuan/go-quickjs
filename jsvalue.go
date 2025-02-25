@@ -13,59 +13,7 @@ import (
 
 var null = C.JS_Null()
 
-func (c *Context) reflectToJsValue(value any) C.JSValue {
-	valueOf := reflect.ValueOf(value)
-	if valueOf.Kind() == reflect.Pointer {
-		deref := valueOf.Elem()
-		if deref.Kind() != reflect.Struct {
-			return c.toJsValue(deref.Interface())
-		}
-		valueOf = deref
-	}
-	switch valueOf.Kind() {
-	case reflect.Map:
-		class, _ := c.GlobalObject().GetProperty("Map")
-		items := make([]any, 0, valueOf.Len())
-		iter := valueOf.MapRange()
-		for iter.Next() {
-			item := []any{iter.Key().Interface(), iter.Value().Interface()}
-			items = append(items, item)
-		}
-		jsValue := c.toJsValue(items)
-		jsMap := C.JS_CallConstructor(c.raw, class.raw, 1, &jsValue)
-		C.JS_FreeValue(c.raw, jsValue)
-		return jsMap
-	case reflect.Array, reflect.Slice:
-		array := Value{c, C.JS_NewArray(c.raw)}.Object().Array()
-		for i := 0; i < valueOf.Len(); i++ {
-			array.Set(i, valueOf.Index(i).Interface())
-		}
-		return array.raw
-	case reflect.Struct:
-		if _, ok := value.(QuickjsJsonMarshal); ok {
-			var buf bytes.Buffer
-			if err := json.NewEncoder(&buf).Encode(value); err != nil {
-				return null
-			}
-			buf.WriteByte(0)
-			data := buf.Bytes()
-			dataPtr := (*C.char)(unsafe.Pointer(&data[0]))
-			return C.JS_ParseJSON(c.raw, dataPtr, sliceSize(data)-1, nil)
-		}
-		jsValue := c.goObject(value, c.goObjectProto, c.runtime.goObject)
-		if callable, ok := value.(IndexCallable); ok {
-			object := Value{c, jsValue}.Object()
-			for i, name := range callable.MethodList() {
-				object.setProperty(name, c.goIndexCall(i))
-			}
-		}
-		return jsValue
-	default:
-		return C.JS_Undefined()
-	}
-}
-
-func (c *Context) toJsValue(value any) C.JSValue {
+func (c *Context) toValue(value any) C.JSValue {
 	switch value := value.(type) {
 	case bool:
 		intValue := 0
@@ -137,11 +85,20 @@ func (c *Context) toJsValue(value any) C.JSValue {
 	case map[string]any:
 		object := Value{c, C.JS_NewObject(c.raw)}.Object()
 		for key, value := range value {
-			object.setProperty(key, c.toJsValue(value))
+			object.setProperty(key, c.toValue(value))
 		}
 		return object.raw
 	case Value:
 		return value.raw
+	case json.Marshaler:
+		var buf bytes.Buffer
+		if err := json.NewEncoder(&buf).Encode(value); err != nil {
+			return null
+		}
+		buf.WriteByte(0)
+		data := buf.Bytes()
+		dataPtr := (*C.char)(unsafe.Pointer(&data[0]))
+		return C.JS_ParseJSON(c.raw, dataPtr, sliceSize(data)-1, nil)
 	default:
 		if value == Undefined {
 			return C.JS_Undefined()
@@ -149,10 +106,60 @@ func (c *Context) toJsValue(value any) C.JSValue {
 		if value == nil {
 			return null
 		}
-		return c.reflectToJsValue(value)
+		valueOf := reflect.ValueOf(value)
+		if valueOf.Kind() == reflect.Pointer {
+			return c.toValue(valueOf.Elem().Interface())
+		}
+		switch valueOf.Kind() {
+		case reflect.Map:
+			class, _ := c.GlobalObject().GetProperty("Map")
+			items := make([]any, 0, valueOf.Len())
+			iter := valueOf.MapRange()
+			for iter.Next() {
+				item := []any{iter.Key().Interface(), iter.Value().Interface()}
+				items = append(items, item)
+			}
+			jsValue := c.toValue(items)
+			jsMap := C.JS_CallConstructor(c.raw, class.raw, 1, &jsValue)
+			C.JS_FreeValue(c.raw, jsValue)
+			return jsMap
+		case reflect.Array, reflect.Slice:
+			array := Value{c, C.JS_NewArray(c.raw)}.Object().Array()
+			for i := 0; i < valueOf.Len(); i++ {
+				array.Set(i, valueOf.Index(i).Interface())
+			}
+			return array.raw
+		default:
+			return C.JS_Undefined()
+		}
 	}
 }
 
+// Convert go native types to javascript primitive value or builtin objects
+//
+// Go values are converted to JS values as following:
+//
+// * nil to null
+//
+// * bool to boolean
+//
+// * (u)int(8/16/32/64), float32, float64 to Number
+//
+// * big.Int to bigint
+//
+// * string to string
+//
+// * (u)int(8/16/32) to (U)int(8/16/32)Array
+//
+// * []any or map[string]any to object
+//
+// * Any other form of map to Map
+//
+// * Any other form of slice or array to Array
+//
+// * json.Marshaler to javascript plain object
+//
+// * undefined if not previous cases
 func (c *Context) ToValue(value any) Value {
-	return Value{c, c.toJsValue(value)}
+	return Value{c, c.toValue(value)}
 }

@@ -3,6 +3,7 @@ package quickjs
 //#include "ffi.h"
 import "C"
 import (
+	"reflect"
 	"runtime"
 	"sync/atomic"
 	"unsafe"
@@ -18,6 +19,7 @@ type Context struct {
 	goIndexCallProto C.JSValueConst
 	goValues         map[uintptr]any
 	objectKinds      map[C.JSValue]ObjectKind
+	protoClasses     map[reflect.Type]C.JSValueConst
 	free             atomic.Bool
 }
 
@@ -102,6 +104,9 @@ func (c *Context) Free() {
 	}
 	C.JS_FreeValue(c.raw, c.global)
 	C.JS_FreeValue(c.raw, c.evalRet)
+	for _, proto := range c.protoClasses {
+		C.JS_FreeValue(c.raw, proto)
+	}
 	C.JS_FreeContext(c.raw)
 	c.runtime.Free()
 }
@@ -132,8 +137,7 @@ func (r *Runtime) NewContext() ContextGuard {
 	C.JS_EnableBignumExt(jsContext, C.int(1))
 
 	object := C.JS_GetGlobalObject(jsContext)
-	goValues := make(map[uintptr]any)
-	context := &Context{runtime: r, raw: jsContext, global: object, goValues: goValues}
+	context := &Context{runtime: r, raw: jsContext, global: object}
 	context.goObjectProto = C.JS_NewObject(jsContext)
 	C.JS_SetClassProto(jsContext, r.goObject, context.goObjectProto)
 	context.goFuncProto = C.JS_NewObject(jsContext)
@@ -145,7 +149,9 @@ func (r *Runtime) NewContext() ContextGuard {
 		jsValue, _ := context.GlobalObject().GetProperty(name)
 		objectKinds[jsValue.raw] = ObjectKind(i + 1)
 	}
+	context.goValues = make(map[uintptr]any)
 	context.objectKinds = objectKinds
+	context.protoClasses = make(map[reflect.Type]C.JSValue)
 	if !r.manualFree {
 		runtime.SetFinalizer(context, func(c *Context) { c.Free() })
 	}

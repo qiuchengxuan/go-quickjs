@@ -10,10 +10,6 @@ type undefined struct{}
 
 var Undefined *undefined = nil
 
-type QuickjsJsonMarshal interface {
-	QuickjsJsonMarshal()
-}
-
 type IndexCallable interface {
 	// List of method names to be added as method
 	MethodList() []string

@@ -46,7 +46,7 @@ type tuple struct{ l, r any }
 
 func makeTuple(call Call) (Value, error) {
 	value := tuple{call.Arg(0).ToPrimitive(), call.Arg(1).ToPrimitive()}
-	return call.ToValue(value), nil
+	return call.ToObject(value), nil
 }
 
 func TestAddConstructor(t *testing.T) {
@@ -61,7 +61,7 @@ func TestAddConstructor(t *testing.T) {
 type bigInt struct{ big.Int }
 
 func (b *bigInt) MethodList() []string {
-	methods := [3]string{"add", "sub", "nop"}
+	methods := [4]string{"add", "sub", "nop", "self"}
 	return methods[:]
 }
 
@@ -70,13 +70,15 @@ func (b *bigInt) IndexCall(index int, call Call) (Value, error) {
 	case 0:
 		rhs := call.Arg(0).ToNative()
 		b.Add(&b.Int, big.NewInt(int64(rhs.(int))))
-		return call.ToValue(b), nil
+		return call.ToObject(b), nil
 	case 1:
 		rhs := call.Arg(0).ToNative()
 		b.Sub(&b.Int, big.NewInt(int64(rhs.(int))))
-		return call.ToValue(b), nil
+		return call.ToObject(b), nil
 	case 2:
 		return call.ToValue(nil), nil
+	case 3:
+		return call.ToObject(b), nil
 	default:
 		panic("unreachable")
 	}
@@ -84,7 +86,8 @@ func (b *bigInt) IndexCall(index int, call Call) (Value, error) {
 
 func TestIndexCall(t *testing.T) {
 	NewRuntime().NewContext().With(func(context *Context) {
-		context.GlobalObject().SetProperty("ut", &bigInt{*big.NewInt(100)})
+		object := context.ToObject(&bigInt{*big.NewInt(100)})
+		context.GlobalObject().SetValue("ut", object)
 		value, err := context.Eval(`ut.add(2n)`)
 		assert.NoError(t, err)
 		assert.Equal(t, &bigInt{*big.NewInt(102)}, value.ToNative())
@@ -112,11 +115,24 @@ func BenchmarkNativeCall(b *testing.B) {
 	})
 }
 
-func BenchmarkIndexCall(b *testing.B) {
+func BenchmarkIndexCallNop(b *testing.B) {
 	NewRuntime().NewContext().With(func(context *Context) {
-		context.GlobalObject().SetProperty("ut", &bigInt{*big.NewInt(0)})
+		context.GlobalObject().SetValue("ut", context.ToObject(&bigInt{*big.NewInt(0)}))
+		_, err := context.Eval("ut.nop()")
+		assert.NoError(b, err)
 		for i := 0; i < b.N; i++ {
-			_, _ = context.Eval("ut.nop(1n)")
+			_, _ = context.Eval("ut.nop()")
+		}
+	})
+}
+
+func BenchmarkIndexCallSelf(b *testing.B) {
+	NewRuntime().NewContext().With(func(context *Context) {
+		context.GlobalObject().SetValue("ut", context.ToObject(&bigInt{*big.NewInt(0)}))
+		_, err := context.Eval("ut.self()")
+		assert.NoError(b, err)
+		for i := 0; i < b.N; i++ {
+			_, _ = context.Eval("ut.self()")
 		}
 	})
 }
