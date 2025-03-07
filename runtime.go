@@ -35,12 +35,11 @@ func (e Error) Error() string {
 }
 
 type Runtime struct {
-	raw         *C.JSRuntime
-	manualFree  bool
-	goObject    C.JSClassID
-	goFunc      C.JSClassID
-	goIndexCall C.JSClassID
-	refCount    atomic.Int32
+	raw        *C.JSRuntime
+	manualFree bool
+	refCount   atomic.Int32
+
+	goObject, goFunc, goIndexCall C.JSClassID
 }
 
 func (r *Runtime) GetMemoryUsage() MemoryUsage {
@@ -69,12 +68,11 @@ func NewRuntime(config ...Config) *Runtime {
 		}
 		jsRuntime.manualFree = config.ManualFree
 	}
-	C.JS_NewClassID(&jsRuntime.goObject)
-	C.JS_NewClass(jsRuntime.raw, jsRuntime.goObject, &C.go_object_class)
-	C.JS_NewClassID(&jsRuntime.goFunc)
-	C.JS_NewClass(jsRuntime.raw, jsRuntime.goFunc, &C.go_function_class)
-	C.JS_NewClassID(&jsRuntime.goIndexCall)
-	C.JS_NewClass(jsRuntime.raw, jsRuntime.goIndexCall, &C.go_indexcall_class)
+	classIDs := [3]*C.JSClassID{&jsRuntime.goObject, &jsRuntime.goFunc, &jsRuntime.goIndexCall}
+	for i, classID := range classIDs {
+		C.JS_NewClassID(classID)
+		C.JS_NewClass(jsRuntime.raw, *classID, &C.go_classes[i])
+	}
 	jsRuntime.refCount.Add(1)
 	if !jsRuntime.manualFree {
 		runtime.SetFinalizer(jsRuntime, func(r *Runtime) { r.Free() })

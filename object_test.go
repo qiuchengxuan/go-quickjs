@@ -94,7 +94,7 @@ func TestSetProperty(t *testing.T) {
 func TestFinalizer(t *testing.T) {
 	NewRuntime().NewContext().With(func(context *Context) {
 		proto, classID := context.goObjectProto, context.runtime.goObject
-		Value{context, context.goObject(nil, proto, classID)}.free()
+		Value{context, context.goObject(nil, proto, classID, 0)}.free()
 		assert.Zero(t, 0, len(context.goValues))
 	})
 }
@@ -125,6 +125,21 @@ func TestJsonMarshal(t *testing.T) {
 		value, err = global.GetProperty("jsonValue")
 		assert.NoError(t, err)
 		assert.Equal(t, expected, value.JSONify())
+	})
+}
+
+func TestMapJSONFields(t *testing.T) {
+	NewRuntime().NewContext().With(func(context *Context) {
+		object := context.ToObject(&jsonMarshaller{1, "2"}, MapJSONFields)
+		context.GlobalObject().SetValue("marshaller", object)
+		retval, err := context.Eval("marshaller.a")
+		assert.NoError(t, err)
+		assert.Equal(t, 1, retval.ToPrimitive())
+
+		context.Eval("marshaller.a = 2;")
+		value, err := context.GlobalObject().GetProperty("marshaller")
+		assert.NoError(t, err)
+		assert.Equal(t, &jsonMarshaller{2, "2"}, value.ToNative())
 	})
 }
 
@@ -160,6 +175,20 @@ func BenchmarkObjectFromNative(b *testing.B) {
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
 			global.SetProperty("whatever", expected)
+		}
+		b.StopTimer()
+	})
+}
+
+func BenchmarkMapJSONFields(b *testing.B) {
+	NewRuntime().NewContext().With(func(context *Context) {
+		global := context.GlobalObject()
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			object := context.ToObject(&jsonMarshaller{1, "2"}, MapJSONFields)
+			global.SetValue("value", object)
+			object, _ = global.GetProperty("value")
+			_ = object.ToNative()
 		}
 		b.StopTimer()
 	})

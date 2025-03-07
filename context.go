@@ -23,10 +23,10 @@ type Context struct {
 	free             atomic.Bool
 }
 
-func (c *Context) goObject(value any, proto C.JSValueConst, classID C.JSClassID) C.JSValue {
+func (c *Context) goObject(value any, proto jsValCst, classID classID, flags ObjectFlags) jsVal {
 	jsObject := C.JS_NewObjectProtoClass(c.raw, proto, classID)
 	c.goValues[(uintptr)(C.JS_ValuePtr(jsObject))] = value
-	data := goObjectData{value, c}
+	data := goObjectData{c, value, flags}
 	dataPtr := C.malloc(C.size_t(unsafe.Sizeof(data)))
 	*(*goObjectData)(dataPtr) = data
 	C.JS_SetOpaque(jsObject, dataPtr)

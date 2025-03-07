@@ -112,8 +112,10 @@ func (o Object) ToNative() any {
 	switch o.Kind() {
 	case KindPlainObject:
 		if classID := C.JS_GetClassID(o.raw); classID == o.context.runtime.goObject {
-			dataPtr := C.JS_GetOpaque(o.raw, C.JS_GetClassID(o.raw))
-			data := (*goObjectData)(dataPtr)
+			data := getObjectData(o.raw)
+			if data.flags&MapJSONFields > 0 {
+				_ = o.JsonOut(data.value)
+			}
 			return data.value
 		}
 		return o.plainObjectToNative()

@@ -23,5 +23,5 @@ func (c Call) Flags() uint { return uint(c.flags) }
 type Func = func(call Call) (Value, error)
 
 func (c *Context) rawFunc(rawFunc Func) C.JSValue {
-	return c.goObject(rawFunc, c.goFuncProto, c.runtime.goFunc)
+	return c.goObject(rawFunc, c.goFuncProto, c.runtime.goFunc, 0)
 }

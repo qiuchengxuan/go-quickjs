@@ -60,7 +60,7 @@ func TestAddConstructor(t *testing.T) {
 
 type bigInt struct{ big.Int }
 
-func (b *bigInt) MethodList() []string {
+func (b *bigInt) Methods() []string {
 	methods := [4]string{"add", "sub", "nop", "self"}
 	return methods[:]
 }
